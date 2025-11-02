@@ -14,7 +14,7 @@ DROP TABLE IF EXISTS ho_khau CASCADE;
 
 -- TẠO BẢNG HỘ KHẨU (ho_khau)
 -- Bảng này được tạo trước, cột chu_ho_id sẽ được liên kết sau
-CREATE TABLE ho_khau (
+CREATE TABLE IF NOT EXISTS ho_khau (
     id          BIGSERIAL PRIMARY KEY,
     ma_ho_khau  VARCHAR(255),
     dia_chi     VARCHAR(255),
@@ -23,7 +23,7 @@ CREATE TABLE ho_khau (
 );
 
 -- TẠO BẢNG NHÂN KHẨU (nhan_khau)
-CREATE TABLE nhan_khau (
+CREATE TABLE IF NOT EXISTS nhan_khau (
     id                            BIGSERIAL PRIMARY KEY,
     ho_ten                        VARCHAR(255),
     bi_danh                       VARCHAR(255),
@@ -56,7 +56,7 @@ FOREIGN KEY (chu_ho_id) REFERENCES nhan_khau(id);
 
 
 -- TẠO BẢNG KHOẢN THU (khoan_thu)
-CREATE TABLE khoan_thu (
+CREATE TABLE IF NOT EXISTS khoan_thu (
     id                            BIGSERIAL PRIMARY KEY,
     ten_khoan_thu                 VARCHAR(255) NOT NULL,
     ngay_tao                      DATE NOT NULL,
@@ -65,7 +65,7 @@ CREATE TABLE khoan_thu (
 );
 
 -- TẠO BẢNG LỊCH SỬ NỘP TIỀN (lich_su_nop_tien)
-CREATE TABLE lich_su_nop_tien (
+CREATE TABLE IF NOT EXISTS lich_su_nop_tien (
     id                            BIGSERIAL PRIMARY KEY,
     ngay_nop                      DATE NOT NULL,
     so_tien                       DECIMAL(15, 2) NOT NULL,
@@ -81,7 +81,7 @@ CREATE TABLE lich_su_nop_tien (
 -- =================================================================
 -- TẠO BẢNG NGƯỜI DÙNG (users)
 -- =================================================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id          BIGSERIAL PRIMARY KEY,
     username    VARCHAR(255) NOT NULL UNIQUE,
     password    VARCHAR(255) NOT NULL,
@@ -157,6 +157,34 @@ CREATE INDEX IF NOT EXISTS idx_lichsu_hokhau_id ON lich_su_thay_doi_ho_khau(ho_k
 CREATE INDEX IF NOT EXISTS idx_lichsu_hokhau_ngay ON lich_su_thay_doi_ho_khau(ngay_thay_doi);
 CREATE INDEX IF NOT EXISTS idx_nhankhau_trangthai ON nhan_khau(trang_thai);
 
+-- TẠO BẢNG TẠM VẮNG (tam_vang)
+CREATE TABLE IF NOT EXISTS tam_vang (
+    id BIGSERIAL PRIMARY KEY,
+    nhan_khau_id BIGINT REFERENCES nhan_khau(id),
+    ngay_bat_dau DATE NOT NULL,
+    ngay_ket_thuc DATE NOT NULL,
+    noi_den VARCHAR(255),
+    ly_do TEXT,
+    ngay_cap DATE,
+    nguoi_cap VARCHAR(255)
+);
+
+-- TẠO BẢNG TẠM TRÚ (tam_tru)
+CREATE TABLE IF NOT EXISTS tam_tru (
+    id BIGSERIAL PRIMARY KEY,
+    ho_ten VARCHAR(255) NOT NULL,
+    ngay_sinh DATE,
+    gioi_tinh VARCHAR(10),
+    cmnd_cccd VARCHAR(255),
+    noi_thuong_tru VARCHAR(255),
+    ho_khau_tiep_nhan_id BIGINT REFERENCES ho_khau(id),
+    ngay_bat_dau DATE NOT NULL,
+    ngay_ket_thuc DATE NOT NULL,
+    ly_do TEXT,
+    ngay_cap DATE,
+    nguoi_cap VARCHAR(255)
+);
+
 -- 5. Dữ liệu mẫu cho lịch sử biến động (optional)
 -- Ghi nhận việc thêm mới các nhân khẩu hiện có
 INSERT INTO lich_su_bien_dong_nhan_khau (nhan_khau_id, loai_bien_dong, ngay_bien_dong, ghi_chu, nguoi_ghi_nhan)
@@ -174,12 +202,3 @@ WHERE NOT EXISTS (
 -- 6. Cập nhật sequence để đảm bảo ID không bị trùng
 SELECT setval('lich_su_bien_dong_nhan_khau_id_seq', COALESCE((SELECT MAX(id) FROM lich_su_bien_dong_nhan_khau), 0) + 1);
 SELECT setval('lich_su_thay_doi_ho_khau_id_seq', COALESCE((SELECT MAX(id) FROM lich_su_thay_doi_ho_khau), 0) + 1);
-
--- Hiển thị thông báo hoàn thành
-DO $$
-BEGIN
-    RAISE NOTICE 'Migration completed successfully!';
-    RAISE NOTICE 'Created tables: lich_su_bien_dong_nhan_khau, lich_su_thay_doi_ho_khau';
-    RAISE NOTICE 'Added column: nhan_khau.trang_thai';
-    RAISE NOTICE 'Created indexes for better performance';
-END $$;

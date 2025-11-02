@@ -1,4 +1,4 @@
-// src/main/java/com/quanlynhankhau/api/dto/BienDongNhanKhauRequest.java
+// src/main/java/com/quanlynhankhau/api/dto/BienDongNhanKhauDTO.java
 
 package com.quanlynhankhau.api.dto;
 
