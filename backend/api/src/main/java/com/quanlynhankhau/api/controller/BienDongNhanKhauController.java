@@ -12,14 +12,24 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import com.quanlynhankhau.api.dto.*;
-import com.quanlynhankhau.api.entity.NhanKhau;
+import com.quanlynhankhau.api.dto.BienDongNhanKhauDTO;
+import com.quanlynhankhau.api.dto.ThayDoiChuHoRequest;
+import com.quanlynhankhau.api.entity.LichSuThayDoiHoKhau;
 import com.quanlynhankhau.api.service.BienDongNhanKhauService;
 
-import jakarta.validation.Valid;
-
+/**
+ * Controller xử lý các API liên quan đến biến động nhân khẩu
+ */
 @RestController
 @RequestMapping("/api/bien-dong")
 @CrossOrigin(origins = "http://localhost:5173")
@@ -29,114 +39,106 @@ public class BienDongNhanKhauController {
     private BienDongNhanKhauService bienDongService;
 
     /**
-     * API Khai sinh - Thêm trẻ sơ sinh vào hộ khẩu
-     * POST /api/bien-dong/khai-sinh/{hoKhauId}
+     * API ghi nhận biến động nhân khẩu (chuyển đi, qua đời, v.v.)
+     * POST /api/bien-dong/nhan-khau
      */
-    @PostMapping("/khai-sinh/{hoKhauId}")
+    @PostMapping("/nhan-khau")
     @PreAuthorize("hasRole('ROLE_ADMIN')")
-    public ResponseEntity<?> khaiSinh(
-            @PathVariable Long hoKhauId,
-            @Valid @RequestBody KhaiSinhRequestDTO request) {
+    public ResponseEntity<?> ghiNhanBienDong(
+            @RequestBody BienDongNhanKhauDTO request,
+            Authentication authentication) {
         try {
-            NhanKhau newborn = bienDongService.khaiSinh(hoKhauId, request);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "Khai sinh thành công");
-            response.put("data", newborn);
-
-            return new ResponseEntity<>(response, HttpStatus.CREATED);
+            String nguoiGhiNhan = authentication.getName();
+            BienDongNhanKhauDTO result = bienDongService.ghiNhanBienDong(request, nguoiGhiNhan);
+            return new ResponseEntity<>(result, HttpStatus.CREATED);
         } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("success", false);
-            errorResponse.put("message", e.getMessage());
-            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
         }
     }
 
     /**
-     * API Khai tử - Đánh dấu nhân khẩu đã mất
-     * POST /api/bien-dong/khai-tu/{nhanKhauId}
-     */
-    @PostMapping("/khai-tu/{nhanKhauId}")
-    @PreAuthorize("hasRole('ROLE_ADMIN')")
-    public ResponseEntity<?> khaiTu(
-            @PathVariable Long nhanKhauId,
-            @Valid @RequestBody KhaiTuRequestDTO request) {
-        try {
-            bienDongService.khaiTu(nhanKhauId, request);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "Khai tử thành công");
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("success", false);
-            errorResponse.put("message", e.getMessage());
-            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
-        }
-    }
-
-    /**
-     * API Chuyển đi - Đánh dấu nhân khẩu chuyển đi
-     * POST /api/bien-dong/chuyen-di/{nhanKhauId}
-     */
-    @PostMapping("/chuyen-di/{nhanKhauId}")
-    @PreAuthorize("hasRole('ROLE_ADMIN')")
-    public ResponseEntity<?> chuyenDi(
-            @PathVariable Long nhanKhauId,
-            @Valid @RequestBody ChuyenDiRequestDTO request) {
-        try {
-            bienDongService.chuyenDi(nhanKhauId, request);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "Ghi nhận chuyển đi thành công");
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("success", false);
-            errorResponse.put("message", e.getMessage());
-            return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
-        }
-    }
-
-    /**
-     * API Lấy lịch sử biến động của một nhân khẩu
+     * API lấy lịch sử biến động của một nhân khẩu
      * GET /api/bien-dong/nhan-khau/{nhanKhauId}
      */
     @GetMapping("/nhan-khau/{nhanKhauId}")
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     public ResponseEntity<List<BienDongNhanKhauDTO>> getLichSuByNhanKhau(@PathVariable Long nhanKhauId) {
-        List<BienDongNhanKhauDTO> lichSu = bienDongService.getLichSuBienDongByNhanKhau(nhanKhauId);
+        List<BienDongNhanKhauDTO> lichSu = bienDongService.getLichSuByNhanKhauId(nhanKhauId);
         return ResponseEntity.ok(lichSu);
     }
 
     /**
-     * API Lấy lịch sử biến động của một hộ khẩu
+     * API lấy lịch sử biến động của một hộ khẩu
      * GET /api/bien-dong/ho-khau/{hoKhauId}
      */
     @GetMapping("/ho-khau/{hoKhauId}")
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     public ResponseEntity<List<BienDongNhanKhauDTO>> getLichSuByHoKhau(@PathVariable Long hoKhauId) {
-        List<BienDongNhanKhauDTO> lichSu = bienDongService.getLichSuBienDongByHoKhau(hoKhauId);
+        List<BienDongNhanKhauDTO> lichSu = bienDongService.getLichSuByHoKhauId(hoKhauId);
         return ResponseEntity.ok(lichSu);
     }
 
     /**
-     * API Thống kê biến động
-     * GET /api/bien-dong/thong-ke?startDate=yyyy-MM-dd&endDate=yyyy-MM-dd
+     * API lấy lịch sử biến động theo khoảng thời gian
+     * GET /api/bien-dong/theo-thoi-gian?tuNgay=2025-01-01&denNgay=2025-12-31
+     */
+    @GetMapping("/theo-thoi-gian")
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    public ResponseEntity<List<BienDongNhanKhauDTO>> getLichSuByKhoangThoiGian(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tuNgay,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate denNgay) {
+        List<BienDongNhanKhauDTO> lichSu = bienDongService.getLichSuByKhoangThoiGian(tuNgay, denNgay);
+        return ResponseEntity.ok(lichSu);
+    }
+
+    /**
+     * API thống kê số lượng biến động theo loại
+     * GET /api/bien-dong/thong-ke?loai=CHUYEN_DI&tuNgay=2025-01-01&denNgay=2025-12-31
      */
     @GetMapping("/thong-ke")
-    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT')")
-    public ResponseEntity<ThongKeBienDongDTO> getThongKe(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    public ResponseEntity<Map<String, Long>> thongKeBienDong(
+            @RequestParam String loai,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tuNgay,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate denNgay) {
+        Long soLuong = bienDongService.thongKeBienDong(loai, tuNgay, denNgay);
+        Map<String, Long> result = new HashMap<>();
+        result.put("soLuong", soLuong);
+        return ResponseEntity.ok(result);
+    }
 
-        ThongKeBienDongDTO thongKe = bienDongService.getThongKeBienDong(startDate, endDate);
-        return ResponseEntity.ok(thongKe);
+    /**
+     * API thay đổi chủ hộ
+     * POST /api/bien-dong/thay-doi-chu-ho
+     */
+    @PostMapping("/thay-doi-chu-ho")
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    public ResponseEntity<?> thayDoiChuHo(
+            @RequestBody ThayDoiChuHoRequest request,
+            Authentication authentication) {
+        try {
+            String nguoiGhiNhan = authentication.getName();
+            bienDongService.thayDoiChuHo(request, nguoiGhiNhan);
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "Thay đổi chủ hộ thành công");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    /**
+     * API lấy lịch sử thay đổi của hộ khẩu
+     * GET /api/bien-dong/lich-su-ho-khau/{hoKhauId}
+     */
+    @GetMapping("/lich-su-ho-khau/{hoKhauId}")
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    public ResponseEntity<List<LichSuThayDoiHoKhau>> getLichSuThayDoiHoKhau(@PathVariable Long hoKhauId) {
+        List<LichSuThayDoiHoKhau> lichSu = bienDongService.getLichSuThayDoiHoKhau(hoKhauId);
+        return ResponseEntity.ok(lichSu);
     }
 }

@@ -9,7 +9,6 @@
 DROP TABLE IF EXISTS lich_su_nop_tien CASCADE;
 DROP TABLE IF EXISTS khoan_thu CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
-DROP TABLE IF EXISTS bien_dong_nhan_khau CASCADE;
 DROP TABLE IF EXISTS nhan_khau CASCADE;
 DROP TABLE IF EXISTS ho_khau CASCADE;
 
@@ -90,63 +89,97 @@ CREATE TABLE users (
     role        VARCHAR(50) NOT NULL -- Ví dụ: 'ROLE_ADMIN', 'ROLE_ACCOUNTANT'
 );
 
+-- =====================================================
+-- MIGRATION SCRIPT: Biến động Nhân khẩu
+-- Mô tả: Thêm các bảng và cột cần thiết để quản lý
+--        biến động nhân khẩu (chuyển đi, qua đời, thay đổi chủ hộ)
+-- =====================================================
 
--- =================================================================
--- Migration: Thêm chức năng Biến động nhân khẩu
--- =================================================================
+-- 1. Thêm cột trạng thái vào bảng nhan_khau
+ALTER TABLE nhan_khau
+    ADD COLUMN IF NOT EXISTS trang_thai VARCHAR(50) DEFAULT 'DANG_CU_TRU';
 
--- 1. Thêm bảng biến động nhân khẩu
-CREATE TABLE IF NOT EXISTS bien_dong_nhan_khau (
-                                                   id                  BIGSERIAL PRIMARY KEY,
-                                                   nhan_khau_id        BIGINT NOT NULL,
-                                                   loai_bien_dong      VARCHAR(50) NOT NULL,
-    -- Các loại: KHAI_SINH, KHAI_TU, CHUYEN_DI, CHUYEN_DEN, THAY_DOI_CHU_HO, THAY_DOI_KHAC
+COMMENT ON COLUMN nhan_khau.trang_thai IS 'Trạng thái của nhân khẩu: DANG_CU_TRU, DA_CHUYEN_DI, DA_QUA_DOI, TAM_VANG';
+
+-- 2. Tạo bảng lịch sử biến động nhân khẩu
+CREATE TABLE IF NOT EXISTS lich_su_bien_dong_nhan_khau (
+                                                           id                  BIGSERIAL PRIMARY KEY,
+                                                           nhan_khau_id        BIGINT NOT NULL,
+                                                           loai_bien_dong      VARCHAR(50) NOT NULL,
     ngay_bien_dong      DATE NOT NULL,
-    noi_chuyen          VARCHAR(500),
+    noi_chuyen_den      VARCHAR(255),
     ly_do               TEXT,
     ghi_chu             TEXT,
-    nguoi_thuc_hien     VARCHAR(255),
-    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    nguoi_ghi_nhan      VARCHAR(255),
+    ngay_ghi_nhan       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_biendong_nhankhau FOREIGN KEY (nhan_khau_id) REFERENCES nhan_khau(id) ON DELETE CASCADE
+    CONSTRAINT fk_lichsu_nhankhau FOREIGN KEY (nhan_khau_id)
+    REFERENCES nhan_khau(id) ON DELETE CASCADE
     );
 
--- 2. Thêm cột trạng thái vào bảng nhân khẩu
-ALTER TABLE nhan_khau
-    ADD COLUMN IF NOT EXISTS trang_thai VARCHAR(50) DEFAULT 'THUONG_TRU';
--- Các trạng thái: THUONG_TRU, TAM_VANG, TAM_TRU, DA_CHUYEN_DI, DA_MAT
+COMMENT ON TABLE lich_su_bien_dong_nhan_khau IS 'Lưu lịch sử các biến động của nhân khẩu';
+COMMENT ON COLUMN lich_su_bien_dong_nhan_khau.loai_bien_dong IS 'Loại biến động: THEM_MOI, CHUYEN_DI, QUA_DOI, THAY_DOI_CHU_HO, THAY_DOI_THONG_TIN';
+COMMENT ON COLUMN lich_su_bien_dong_nhan_khau.ngay_bien_dong IS 'Ngày xảy ra biến động';
+COMMENT ON COLUMN lich_su_bien_dong_nhan_khau.noi_chuyen_den IS 'Nơi chuyển đến (nếu là chuyển đi)';
+COMMENT ON COLUMN lich_su_bien_dong_nhan_khau.ly_do IS 'Lý do biến động';
+COMMENT ON COLUMN lich_su_bien_dong_nhan_khau.ghi_chu IS 'Ghi chú thêm';
 
--- 3. Thêm cột cho khai tử
-ALTER TABLE nhan_khau
-    ADD COLUMN IF NOT EXISTS ngay_mat DATE,
-    ADD COLUMN IF NOT EXISTS noi_mat VARCHAR(255),
-    ADD COLUMN IF NOT EXISTS nguyen_nhan_mat TEXT;
+-- 3. Tạo bảng lịch sử thay đổi hộ khẩu (thay đổi chủ hộ, địa chỉ, v.v.)
+CREATE TABLE IF NOT EXISTS lich_su_thay_doi_ho_khau (
+                                                        id                  BIGSERIAL PRIMARY KEY,
+                                                        ho_khau_id          BIGINT NOT NULL,
+                                                        loai_thay_doi       VARCHAR(50) NOT NULL,
+    noi_dung_thay_doi   TEXT NOT NULL,
+    ngay_thay_doi       DATE NOT NULL,
+    chu_ho_cu_id        BIGINT,
+    chu_ho_moi_id       BIGINT,
+    nguoi_ghi_nhan      VARCHAR(255),
+    ngay_ghi_nhan       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
--- 4. Thêm cột cho chuyển đi
-ALTER TABLE nhan_khau
-    ADD COLUMN IF NOT EXISTS ngay_chuyen_di DATE,
-    ADD COLUMN IF NOT EXISTS noi_chuyen_den VARCHAR(500),
-    ADD COLUMN IF NOT EXISTS ly_do_chuyen TEXT;
+    CONSTRAINT fk_lichsu_hokhau FOREIGN KEY (ho_khau_id)
+    REFERENCES ho_khau(id) ON DELETE CASCADE,
+    CONSTRAINT fk_lichsu_chuhocu FOREIGN KEY (chu_ho_cu_id)
+    REFERENCES nhan_khau(id) ON DELETE SET NULL,
+    CONSTRAINT fk_lichsu_chuhomoi FOREIGN KEY (chu_ho_moi_id)
+    REFERENCES nhan_khau(id) ON DELETE SET NULL
+    );
 
--- 5. Tạo index để tăng hiệu suất truy vấn
-CREATE INDEX IF NOT EXISTS idx_bien_dong_nhan_khau_id ON bien_dong_nhan_khau(nhan_khau_id);
-CREATE INDEX IF NOT EXISTS idx_bien_dong_loai ON bien_dong_nhan_khau(loai_bien_dong);
-CREATE INDEX IF NOT EXISTS idx_bien_dong_ngay ON bien_dong_nhan_khau(ngay_bien_dong);
-CREATE INDEX IF NOT EXISTS idx_nhan_khau_trang_thai ON nhan_khau(trang_thai);
+COMMENT ON TABLE lich_su_thay_doi_ho_khau IS 'Lưu lịch sử các thay đổi liên quan đến toàn bộ hộ khẩu';
+COMMENT ON COLUMN lich_su_thay_doi_ho_khau.loai_thay_doi IS 'Loại thay đổi: THAY_DOI_CHU_HO, THAY_DOI_DIA_CHI, TACH_HO';
+COMMENT ON COLUMN lich_su_thay_doi_ho_khau.noi_dung_thay_doi IS 'Mô tả chi tiết nội dung thay đổi';
 
--- 6. Cập nhật trạng thái cho dữ liệu hiện có
-UPDATE nhan_khau
-SET trang_thai = 'THUONG_TRU'
-WHERE trang_thai IS NULL;
+-- 4. Tạo index để tăng tốc truy vấn
+CREATE INDEX IF NOT EXISTS idx_lichsu_nhankhau_id ON lich_su_bien_dong_nhan_khau(nhan_khau_id);
+CREATE INDEX IF NOT EXISTS idx_lichsu_nhankhau_ngay ON lich_su_bien_dong_nhan_khau(ngay_bien_dong);
+CREATE INDEX IF NOT EXISTS idx_lichsu_nhankhau_loai ON lich_su_bien_dong_nhan_khau(loai_bien_dong);
 
--- 7. Thêm ràng buộc kiểm tra
-ALTER TABLE bien_dong_nhan_khau
-    ADD CONSTRAINT chk_loai_bien_dong
-        CHECK (loai_bien_dong IN ('KHAI_SINH', 'KHAI_TU', 'CHUYEN_DI', 'CHUYEN_DEN', 'THAY_DOI_CHU_HO', 'THAY_DOI_KHAC'));
+CREATE INDEX IF NOT EXISTS idx_lichsu_hokhau_id ON lich_su_thay_doi_ho_khau(ho_khau_id);
+CREATE INDEX IF NOT EXISTS idx_lichsu_hokhau_ngay ON lich_su_thay_doi_ho_khau(ngay_thay_doi);
+CREATE INDEX IF NOT EXISTS idx_nhankhau_trangthai ON nhan_khau(trang_thai);
 
-ALTER TABLE nhan_khau
-    ADD CONSTRAINT chk_trang_thai
-        CHECK (trang_thai IN ('THUONG_TRU', 'TAM_VANG', 'TAM_TRU', 'DA_CHUYEN_DI', 'DA_MAT'));
+-- 5. Dữ liệu mẫu cho lịch sử biến động (optional)
+-- Ghi nhận việc thêm mới các nhân khẩu hiện có
+INSERT INTO lich_su_bien_dong_nhan_khau (nhan_khau_id, loai_bien_dong, ngay_bien_dong, ghi_chu, nguoi_ghi_nhan)
+SELECT
+    id,
+    'THEM_MOI',
+    COALESCE(ngay_dang_ky_thuong_tru, ngay_sinh),
+    'Thêm mới khi khởi tạo hệ thống',
+    'Hệ thống'
+FROM nhan_khau
+WHERE NOT EXISTS (
+    SELECT 1 FROM lich_su_bien_dong_nhan_khau WHERE nhan_khau_id = nhan_khau.id
+);
+
+-- 6. Cập nhật sequence để đảm bảo ID không bị trùng
+SELECT setval('lich_su_bien_dong_nhan_khau_id_seq', COALESCE((SELECT MAX(id) FROM lich_su_bien_dong_nhan_khau), 0) + 1);
+SELECT setval('lich_su_thay_doi_ho_khau_id_seq', COALESCE((SELECT MAX(id) FROM lich_su_thay_doi_ho_khau), 0) + 1);
 
 -- Hiển thị thông báo hoàn thành
-SELECT 'Migration completed successfully!' as message;
+DO $$
+BEGIN
+    RAISE NOTICE 'Migration completed successfully!';
+    RAISE NOTICE 'Created tables: lich_su_bien_dong_nhan_khau, lich_su_thay_doi_ho_khau';
+    RAISE NOTICE 'Added column: nhan_khau.trang_thai';
+    RAISE NOTICE 'Created indexes for better performance';
+END $$;

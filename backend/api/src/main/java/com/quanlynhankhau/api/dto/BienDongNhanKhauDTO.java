@@ -1,4 +1,4 @@
-// src/main/java/com/quanlynhankhau/api/dto/BienDongNhanKhauDTO.java
+// src/main/java/com/quanlynhankhau/api/dto/BienDongNhanKhauRequest.java
 
 package com.quanlynhankhau.api.dto;
 
@@ -8,19 +8,34 @@ import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * DTO cho request tạo biến động nhân khẩu từ frontend
+ */
 @Getter
 @Setter
 public class BienDongNhanKhauDTO {
-    private Long id;
     private Long nhanKhauId;
-    private String hoTenNhanKhau;
-    private String cmndCccd;
     private String loaiBienDong;
-    private String loaiBienDongDisplay;
     private LocalDate ngayBienDong;
-    private String noiChuyen;
+    private String noiChuyenDen;
     private String lyDo;
     private String ghiChu;
-    private String nguoiThucHien;
-    private LocalDateTime createdAt;
+
+    public void setId(Long id) {
+    }
+
+    public void setNguoiGhiNhan(String nguoiGhiNhan) {
+    }
+
+    public void setNgayGhiNhan(LocalDateTime ngayGhiNhan) {
+    }
+
+    public void setHoTenNhanKhau(String hoTen) {
+    }
+
+    public void setCmndCccd(String cmndCccd) {
+    }
+
+    public void setMaHoKhau(String maHoKhau) {
+    }
 }

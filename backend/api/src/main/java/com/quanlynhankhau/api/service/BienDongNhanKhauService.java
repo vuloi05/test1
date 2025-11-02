@@ -3,32 +3,32 @@
 package com.quanlynhankhau.api.service;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.quanlynhankhau.api.dto.*;
-import com.quanlynhankhau.api.entity.BienDongNhanKhau;
-import com.quanlynhankhau.api.entity.BienDongNhanKhau.LoaiBienDong;
+import com.quanlynhankhau.api.dto.BienDongNhanKhauDTO;
+import com.quanlynhankhau.api.dto.ThayDoiChuHoRequest;
 import com.quanlynhankhau.api.entity.HoKhau;
+import com.quanlynhankhau.api.entity.LichSuBienDongNhanKhau;
+import com.quanlynhankhau.api.entity.LichSuThayDoiHoKhau;
 import com.quanlynhankhau.api.entity.NhanKhau;
-import com.quanlynhankhau.api.entity.NhanKhau.TrangThai;
-import com.quanlynhankhau.api.repository.BienDongNhanKhauRepository;
 import com.quanlynhankhau.api.repository.HoKhauRepository;
+import com.quanlynhankhau.api.repository.LichSuBienDongRepository;
+import com.quanlynhankhau.api.repository.LichSuThayDoiHoKhauRepository;
 import com.quanlynhankhau.api.repository.NhanKhauRepository;
 
 @Service
-@Transactional
 public class BienDongNhanKhauService {
 
     @Autowired
-    private BienDongNhanKhauRepository bienDongRepository;
+    private LichSuBienDongRepository lichSuBienDongRepository;
+
+    @Autowired
+    private LichSuThayDoiHoKhauRepository lichSuThayDoiHoKhauRepository;
 
     @Autowired
     private NhanKhauRepository nhanKhauRepository;
@@ -36,184 +36,162 @@ public class BienDongNhanKhauService {
     @Autowired
     private HoKhauRepository hoKhauRepository;
 
-    // ===== KHAI SINH =====
-    public NhanKhau khaiSinh(Long hoKhauId, KhaiSinhRequestDTO request) {
+    /**
+     * Ghi nhận biến động nhân khẩu (chuyển đi, qua đời, v.v.)
+     */
+    @Transactional
+    public BienDongNhanKhauDTO ghiNhanBienDong(BienDongNhanKhauDTO request, String nguoiGhiNhan) {
+        // Tìm nhân khẩu
+        NhanKhau nhanKhau = nhanKhauRepository.findById(request.getNhanKhauId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu với ID: " + request.getNhanKhauId()));
+
+        // Tạo bản ghi lịch sử
+        LichSuBienDongNhanKhau lichSu = new LichSuBienDongNhanKhau();
+        lichSu.setNhanKhau(nhanKhau);
+        lichSu.setLoaiBienDong(request.getLoaiBienDong());
+        lichSu.setNgayBienDong(request.getNgayBienDong());
+        lichSu.setNoiChuyenDen(request.getNoiChuyenDen());
+        lichSu.setLyDo(request.getLyDo());
+        lichSu.setGhiChu(request.getGhiChu());
+        lichSu.setNguoiGhiNhan(nguoiGhiNhan);
+
+        // Cập nhật trạng thái nhân khẩu
+        switch (request.getLoaiBienDong()) {
+            case "CHUYEN_DI":
+                nhanKhau.setTrangThai("DA_CHUYEN_DI");
+                break;
+            case "QUA_DOI":
+                nhanKhau.setTrangThai("DA_QUA_DOI");
+                break;
+            case "TAM_VANG":
+                nhanKhau.setTrangThai("TAM_VANG");
+                break;
+            default:
+                // Giữ nguyên trạng thái
+                break;
+        }
+
+        nhanKhauRepository.save(nhanKhau);
+        LichSuBienDongNhanKhau saved = lichSuBienDongRepository.save(lichSu);
+
+        return convertToDTO(saved);
+    }
+
+    /**
+     * Lấy lịch sử biến động của một nhân khẩu
+     */
+    public List<BienDongNhanKhauDTO> getLichSuByNhanKhauId(Long nhanKhauId) {
+        return lichSuBienDongRepository.findByNhanKhauIdOrderByNgayBienDongDesc(nhanKhauId)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Lấy lịch sử biến động của một hộ khẩu
+     */
+    public List<BienDongNhanKhauDTO> getLichSuByHoKhauId(Long hoKhauId) {
+        return lichSuBienDongRepository.findByHoKhauId(hoKhauId)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Lấy lịch sử biến động theo khoảng thời gian
+     */
+    public List<BienDongNhanKhauDTO> getLichSuByKhoangThoiGian(LocalDate tuNgay, LocalDate denNgay) {
+        return lichSuBienDongRepository.findByNgayBienDongBetween(tuNgay, denNgay)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Thống kê số lượng biến động theo loại
+     */
+    public Long thongKeBienDong(String loai, LocalDate tuNgay, LocalDate denNgay) {
+        return lichSuBienDongRepository.countByLoaiAndNgayBetween(loai, tuNgay, denNgay);
+    }
+
+    /**
+     * Thay đổi chủ hộ
+     */
+    @Transactional
+    public void thayDoiChuHo(ThayDoiChuHoRequest request, String nguoiGhiNhan) {
         // Tìm hộ khẩu
-        HoKhau hoKhau = hoKhauRepository.findById(hoKhauId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu với ID: " + hoKhauId));
+        HoKhau hoKhau = hoKhauRepository.findById(request.getHoKhauId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy hộ khẩu với ID: " + request.getHoKhauId()));
 
-        // Tạo nhân khẩu mới (trẻ sơ sinh)
-        NhanKhau newborn = new NhanKhau();
-        newborn.setHoTen(request.getHoTen());
-        newborn.setNgaySinh(request.getNgaySinh());
-        newborn.setGioiTinh(request.getGioiTinh());
-        newborn.setNoiSinh(request.getNoiSinh() != null ? request.getNoiSinh() : "Tại nhà");
-        newborn.setQuanHeVoiChuHo(request.getQuanHeVoiChuHo());
-        newborn.setQueQuan(hoKhau.getDiaChi()); // Mặc định quê quán là địa chỉ hộ khẩu
-        newborn.setDanToc("Kinh"); // Mặc định
-        newborn.setNgayDangKyThuongTru(LocalDate.now());
-        newborn.setDiaChiTruocKhiChuyenDen("Mới sinh");
-        newborn.setTrangThai(TrangThai.THUONG_TRU);
-        newborn.setHoKhau(hoKhau);
+        // Tìm chủ hộ cũ và mới
+        NhanKhau chuHoCu = nhanKhauRepository.findById(request.getChuHoCuId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy chủ hộ cũ"));
 
-        // Lưu ghi chú về cha mẹ
-        String ghiChu = "";
-        if (request.getHoTenCha() != null) {
-            ghiChu += "Cha: " + request.getHoTenCha() + ". ";
-        }
-        if (request.getHoTenMe() != null) {
-            ghiChu += "Mẹ: " + request.getHoTenMe() + ". ";
-        }
-        if (request.getGhiChu() != null) {
-            ghiChu += request.getGhiChu();
+        NhanKhau chuHoMoi = nhanKhauRepository.findById(request.getChuHoMoiId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy chủ hộ mới"));
+
+        // Kiểm tra chủ hộ mới có thuộc hộ khẩu này không
+        if (!chuHoMoi.getHoKhau().getId().equals(hoKhau.getId())) {
+            throw new RuntimeException("Chủ hộ mới phải là thành viên của hộ khẩu này");
         }
 
-        // Lưu nhân khẩu
-        NhanKhau savedNhanKhau = nhanKhauRepository.save(newborn);
+        // Cập nhật quan hệ với chủ hộ
+        chuHoCu.setQuanHeVoiChuHo("Thành viên"); // hoặc quan hệ cụ thể khác
+        chuHoMoi.setQuanHeVoiChuHo("Chủ hộ");
 
-        // Ghi lịch sử biến động
-        BienDongNhanKhau bienDong = new BienDongNhanKhau();
-        bienDong.setNhanKhau(savedNhanKhau);
-        bienDong.setLoaiBienDong(LoaiBienDong.KHAI_SINH);
-        bienDong.setNgayBienDong(request.getNgaySinh());
-        bienDong.setGhiChu(ghiChu);
-        bienDong.setNguoiThucHien(request.getNguoiKhaiBao());
-        bienDong.setCreatedAt(LocalDateTime.now());
+        // Cập nhật chủ hộ của hộ khẩu
+        hoKhau.setChuHo(chuHoMoi);
 
-        bienDongRepository.save(bienDong);
+        // Lưu thay đổi
+        nhanKhauRepository.save(chuHoCu);
+        nhanKhauRepository.save(chuHoMoi);
+        hoKhauRepository.save(hoKhau);
 
-        return savedNhanKhau;
-    }
-
-    // ===== KHAI TỬ =====
-    public void khaiTu(Long nhanKhauId, KhaiTuRequestDTO request) {
-        // Tìm nhân khẩu
-        NhanKhau nhanKhau = nhanKhauRepository.findById(nhanKhauId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu với ID: " + nhanKhauId));
-
-        // Cập nhật trạng thái và thông tin khai tử
-        nhanKhau.setTrangThai(TrangThai.DA_MAT);
-        nhanKhau.setNgayMat(request.getNgayMat());
-        nhanKhau.setNoiMat(request.getNoiMat());
-        nhanKhau.setNguyenNhanMat(request.getNguyenNhanMat());
-
-        nhanKhauRepository.save(nhanKhau);
-
-        // Kiểm tra nếu người này là chủ hộ
-        if ("Chủ hộ".equals(nhanKhau.getQuanHeVoiChuHo()) && nhanKhau.getHoKhau() != null) {
-            // TODO: Thông báo cần chọn chủ hộ mới
-            // Có thể throw exception hoặc tạo notification
-        }
-
-        // Ghi lịch sử biến động
-        BienDongNhanKhau bienDong = new BienDongNhanKhau();
-        bienDong.setNhanKhau(nhanKhau);
-        bienDong.setLoaiBienDong(LoaiBienDong.KHAI_TU);
-        bienDong.setNgayBienDong(request.getNgayMat());
-        bienDong.setNoiChuyen(request.getNoiMat());
-        bienDong.setLyDo(request.getNguyenNhanMat());
-        bienDong.setGhiChu(request.getGhiChu());
-        bienDong.setNguoiThucHien(request.getNguoiKhaiBao());
-        bienDong.setCreatedAt(LocalDateTime.now());
-
-        bienDongRepository.save(bienDong);
-    }
-
-    // ===== CHUYỂN ĐI =====
-    public void chuyenDi(Long nhanKhauId, ChuyenDiRequestDTO request) {
-        // Tìm nhân khẩu
-        NhanKhau nhanKhau = nhanKhauRepository.findById(nhanKhauId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy nhân khẩu với ID: " + nhanKhauId));
-
-        // Cập nhật trạng thái và thông tin chuyển đi
-        nhanKhau.setTrangThai(TrangThai.DA_CHUYEN_DI);
-        nhanKhau.setNgayChuyenDi(request.getNgayChuyenDi());
-        nhanKhau.setNoiChuyenDen(request.getNoiChuyenDen());
-        nhanKhau.setLyDoChuyen(request.getLyDoChuyen());
-
-        nhanKhauRepository.save(nhanKhau);
-
-        // Kiểm tra nếu người này là chủ hộ
-        if ("Chủ hộ".equals(nhanKhau.getQuanHeVoiChuHo()) && nhanKhau.getHoKhau() != null) {
-            // TODO: Thông báo cần chọn chủ hộ mới
-        }
-
-        // Ghi lịch sử biến động
-        BienDongNhanKhau bienDong = new BienDongNhanKhau();
-        bienDong.setNhanKhau(nhanKhau);
-        bienDong.setLoaiBienDong(LoaiBienDong.CHUYEN_DI);
-        bienDong.setNgayBienDong(request.getNgayChuyenDi());
-        bienDong.setNoiChuyen(request.getNoiChuyenDen());
-        bienDong.setLyDo(request.getLyDoChuyen());
-        bienDong.setGhiChu(request.getGhiChu());
-        bienDong.setNguoiThucHien(request.getNguoiKhaiBao());
-        bienDong.setCreatedAt(LocalDateTime.now());
-
-        bienDongRepository.save(bienDong);
-    }
-
-    // ===== LẤY LỊCH SỬ BIẾN ĐỘNG =====
-    public List<BienDongNhanKhauDTO> getLichSuBienDongByNhanKhau(Long nhanKhauId) {
-        List<BienDongNhanKhau> bienDongs = bienDongRepository.findByNhanKhauIdOrderByNgayBienDongDesc(nhanKhauId);
-        return bienDongs.stream().map(this::convertToDTO).collect(Collectors.toList());
-    }
-
-    public List<BienDongNhanKhauDTO> getLichSuBienDongByHoKhau(Long hoKhauId) {
-        List<BienDongNhanKhau> bienDongs = bienDongRepository.findByHoKhauId(hoKhauId);
-        return bienDongs.stream().map(this::convertToDTO).collect(Collectors.toList());
-    }
-
-    // ===== THỐNG KÊ =====
-    public ThongKeBienDongDTO getThongKeBienDong(LocalDate startDate, LocalDate endDate) {
-        // Nếu không có ngày, mặc định lấy 30 ngày gần nhất
-        if (startDate == null) {
-            startDate = LocalDate.now().minusDays(30);
-        }
-        if (endDate == null) {
-            endDate = LocalDate.now();
-        }
-
-        // Lấy tất cả biến động trong khoảng thời gian
-        List<BienDongNhanKhau> bienDongs = bienDongRepository.findByNgayBienDongBetweenOrderByNgayBienDongDesc(startDate, endDate);
-
-        // Đếm theo loại
-        long soKhaiSinh = bienDongs.stream().filter(bd -> bd.getLoaiBienDong() == LoaiBienDong.KHAI_SINH).count();
-        long soKhaiTu = bienDongs.stream().filter(bd -> bd.getLoaiBienDong() == LoaiBienDong.KHAI_TU).count();
-        long soChuyenDi = bienDongs.stream().filter(bd -> bd.getLoaiBienDong() == LoaiBienDong.CHUYEN_DI).count();
-        long soChuyenDen = bienDongs.stream().filter(bd -> bd.getLoaiBienDong() == LoaiBienDong.CHUYEN_DEN).count();
-
-        // Tạo map thống kê
-        Map<String, Long> thongKeTheoLoai = new HashMap<>();
-        for (LoaiBienDong loai : LoaiBienDong.values()) {
-            long count = bienDongs.stream().filter(bd -> bd.getLoaiBienDong() == loai).count();
-            thongKeTheoLoai.put(loai.getDisplayName(), count);
-        }
-
-        return new ThongKeBienDongDTO(
-                (long) bienDongs.size(),
-                soKhaiSinh,
-                soKhaiTu,
-                soChuyenDi,
-                soChuyenDen,
-                thongKeTheoLoai
+        // Ghi nhận lịch sử thay đổi
+        LichSuThayDoiHoKhau lichSu = new LichSuThayDoiHoKhau();
+        lichSu.setHoKhau(hoKhau);
+        lichSu.setLoaiThayDoi("THAY_DOI_CHU_HO");
+        lichSu.setNoiDungThayDoi(
+                String.format("Thay đổi chủ hộ từ %s sang %s. Lý do: %s",
+                        chuHoCu.getHoTen(), chuHoMoi.getHoTen(), request.getLyDo())
         );
+        lichSu.setNgayThayDoi(request.getNgayThayDoi());
+        lichSu.setChuHoCu(chuHoCu);
+        lichSu.setChuHoMoi(chuHoMoi);
+        lichSu.setNguoiGhiNhan(nguoiGhiNhan);
+
+        lichSuThayDoiHoKhauRepository.save(lichSu);
     }
 
-    // ===== HELPER METHODS =====
-    private BienDongNhanKhauDTO convertToDTO(BienDongNhanKhau entity) {
+    /**
+     * Lấy lịch sử thay đổi của hộ khẩu
+     */
+    public List<LichSuThayDoiHoKhau> getLichSuThayDoiHoKhau(Long hoKhauId) {
+        return lichSuThayDoiHoKhauRepository.findByHoKhauIdOrderByNgayThayDoiDesc(hoKhauId);
+    }
+
+    /**
+     * Convert Entity sang DTO
+     */
+    private BienDongNhanKhauDTO convertToDTO(LichSuBienDongNhanKhau entity) {
         BienDongNhanKhauDTO dto = new BienDongNhanKhauDTO();
         dto.setId(entity.getId());
         dto.setNhanKhauId(entity.getNhanKhau().getId());
-        dto.setHoTenNhanKhau(entity.getNhanKhau().getHoTen());
-        dto.setCmndCccd(entity.getNhanKhau().getCmndCccd());
-        dto.setLoaiBienDong(entity.getLoaiBienDong().name());
-        dto.setLoaiBienDongDisplay(entity.getLoaiBienDong().getDisplayName());
+        dto.setLoaiBienDong(entity.getLoaiBienDong());
         dto.setNgayBienDong(entity.getNgayBienDong());
-        dto.setNoiChuyen(entity.getNoiChuyen());
+        dto.setNoiChuyenDen(entity.getNoiChuyenDen());
         dto.setLyDo(entity.getLyDo());
         dto.setGhiChu(entity.getGhiChu());
-        dto.setNguoiThucHien(entity.getNguoiThucHien());
-        dto.setCreatedAt(entity.getCreatedAt());
+        dto.setNguoiGhiNhan(entity.getNguoiGhiNhan());
+        dto.setNgayGhiNhan(entity.getNgayGhiNhan());
+
+        // Thông tin nhân khẩu
+        dto.setHoTenNhanKhau(entity.getNhanKhau().getHoTen());
+        dto.setCmndCccd(entity.getNhanKhau().getCmndCccd());
+        if (entity.getNhanKhau().getHoKhau() != null) {
+            dto.setMaHoKhau(entity.getNhanKhau().getHoKhau().getMaHoKhau());
+        }
+
         return dto;
     }
 }
